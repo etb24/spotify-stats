@@ -1,0 +1,11 @@
+# Node
+node_modules/
+npm-debug.log*
+package-lock.json   # remove this line if you want to commit lockfile
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Env & secrets
+.env

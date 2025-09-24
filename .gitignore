@@ -1,0 +1,16 @@
+# Editors/OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Node mono-repo
+node_modules/
+*.log
+*.tsbuildinfo
+
+# Env & secrets
+.env
+.env.*
+!.env.example
