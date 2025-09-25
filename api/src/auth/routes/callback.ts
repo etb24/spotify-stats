@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
 import qs from 'qs';
+import { writeTokens, missingRequiredScopes, REQUIRED_SCOPES } from '../spotifyTokens';
+import type { SpotifyTokens } from '../spotifyTokens';
 
 const SPOTIFY_TOKEN = 'https://accounts.spotify.com/api/token';
 
@@ -32,18 +34,19 @@ router.post('/callback', async (req: Request, res: Response) => {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
 
-    // store token payload in a signed, httpOnly cookie
-    const tokens = {
+    const tokens: SpotifyTokens = {
       ...tokenRes.data,
       obtained_at: Date.now(),
-    }; // { access_token, token_type, expires_in, refresh_token?, scope, obtained_at }
-    res.cookie('spotify_tokens', tokens, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: false, // set true in prod behind HTTPS
-      signed: true,
-      maxAge: (tokens.expires_in ?? 3600) * 1000,
-    });
+    };
+    const missingScopes = missingRequiredScopes(tokens.scope);
+    if (missingScopes.length > 0) {
+      return res.status(400).json({
+        error: 'missing_scope',
+        required: REQUIRED_SCOPES,
+        missing: missingScopes,
+      });
+    }
+    writeTokens(res, tokens);
 
     // Clean up the short-lived verifier
     res.clearCookie('pkce_verifier');

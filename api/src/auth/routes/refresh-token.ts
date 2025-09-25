@@ -1,52 +1,45 @@
 import { Router, Request, Response } from 'express'
-import axios from 'axios'
-import qs from 'qs'
+import {
+  readTokens,
+  writeTokens,
+  refreshAccessToken,
+  SpotifyTokenError,
+  missingRequiredScopes,
+  REQUIRED_SCOPES,
+} from '../spotifyTokens'
 
-const SPOTIFY_TOKEN = 'https://accounts.spotify.com/api/token'
 const router = Router()
 
 router.post('/refresh', async (req: Request, res: Response) => {
   try {
-    const tokens = req.signedCookies?.spotify_tokens
-    const existingRefresh = tokens?.refresh_token
-    if (!existingRefresh) {
-      return res.status(400).json({ error: 'missing_refresh_token' })
+    const tokens = readTokens(req)
+    if (!tokens) {
+      return res.status(400).json({ error: 'missing_tokens' })
     }
 
-    const body = qs.stringify({
-      grant_type: 'refresh_token',
-      refresh_token: existingRefresh,
-      client_id: process.env.SPOTIFY_CLIENT_ID!, // PKCE: no client_secret, no Basic auth
-    })
-
-    const r = await axios.post(SPOTIFY_TOKEN, body, {
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    })
-
-    // Spotify may rotate the refresh token; keep old if none returned
-    const updated = {
-      ...tokens,
-      ...r.data, // access_token, token_type, expires_in, scope, maybe refresh_token
-      refresh_token: r.data.refresh_token ?? existingRefresh,
-      obtained_at: Date.now(),
+    const updated = await refreshAccessToken(tokens)
+    const missingScopes = missingRequiredScopes(updated.scope)
+    if (missingScopes.length > 0) {
+      return res.status(400).json({
+        error: 'missing_scope',
+        required: REQUIRED_SCOPES,
+        missing: missingScopes,
+      })
     }
 
-    res.cookie('spotify_tokens', updated, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: false, // set true in prod (HTTPS)
-      signed: true,
-      maxAge: (updated.expires_in ?? 3600) * 1000,
-    })
-
+    writeTokens(res, updated)
     return res.json({ ok: true, expires_in: updated.expires_in })
-  } catch (err: any) {
-    console.error('refresh_failed:', err?.response?.status, err?.response?.data || err)
-    return res.status(400).json({
-      error: 'refresh_failed',
-      status: err?.response?.status,
-      details: err?.response?.data,
-    })
+  } catch (err) {
+    if (err instanceof SpotifyTokenError) {
+      if (err.code === 'missing_refresh_token') {
+        return res.status(400).json({ error: err.code })
+      }
+      console.error('refresh_failed:', err.cause ?? err)
+      return res.status(400).json({ error: err.code })
+    }
+
+    console.error('refresh_failed:', err)
+    return res.status(400).json({ error: 'refresh_failed' })
   }
 })
 

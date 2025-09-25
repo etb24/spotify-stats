@@ -8,7 +8,7 @@ import logout from './logout';
 const auth = Router();
 
 auth.use(login);
-auth.use(callback); 
+auth.use(callback);
 auth.use(refresh);
 auth.use(session);
 auth.use(logout);
