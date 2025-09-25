@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/theme.css'
 import '../styles/landing.css'
+import logo from '../assets/logo.svg'
 import { fetchSession, requestLoginUrl } from '../lib/api'
 
 export default function Home() {
@@ -80,7 +81,7 @@ export default function Home() {
     <div className="landing-page">
       <nav className="landing-nav">
         <div className="brand-mark">
-          <span className="brand-icon" aria-hidden="true">SS</span>
+          <img className="brand-logo" src={logo} alt="Spotify Stats logo" />
           <span className="brand-name">Spotify Stats</span>
         </div>
         <button className="nav-login" onClick={handleLogin} disabled={loginDisabled}>
