@@ -1,107 +1,145 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import '../styles/theme.css'
-
-type SessionResponse = {
-  loggedIn?: boolean
-  account?: string | null
-  expired?: boolean
-  error?: string
-}
+import '../styles/landing.css'
+import { fetchSession, requestLoginUrl } from '../lib/api'
 
 export default function Home() {
-  const [status, setStatus] = useState('')
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
-  const [accountName, setAccountName] = useState<string | null>(null)
-
-  const loadSession = async (opts?: { silent?: boolean }) => {
-    try {
-      const res = await fetch('/api/auth/session', { credentials: 'include' })
-      if (!res.ok) {
-        throw new Error(await res.text())
-      }
-      const data = (await res.json()) as SessionResponse
-      const loggedIn = Boolean(data?.loggedIn)
-      setIsLoggedIn(loggedIn)
-      setAccountName(loggedIn ? data?.account ?? null : null)
-      if (loggedIn && data?.account) {
-        setStatus(`Connected to ${data.account}.`)
-      } else if (!loggedIn && data?.expired) {
-        setStatus('Your Spotify session expired. Please log in again.')
-      } else if (!loggedIn && !opts?.silent) {
-        setStatus('Ready when you are.')
-      }
-    } catch (err) {
-      console.error('Session check failed', err)
-      setStatus('Could not determine login state.')
-    }
-  }
-
-  async function connectSpotify() {
-    setStatus('Opening Spotify login...')
-    const res = await fetch('/api/auth/login', { credentials: 'include' })
-    const { url } = await res.json()
-    window.location.href = url // redirect user to Spotify auth page
-  }
-
-  async function logoutSpotify() {
-    setStatus('Logging out of Spotify...')
-    try {
-      const res = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        throw new Error(await res.text())
-      }
-      setIsLoggedIn(false)
-      setAccountName(null)
-      setStatus('Logged out of Spotify.')
-      void loadSession({ silent: true })
-    } catch (err) {
-      console.error('Logout failed', err)
-      setStatus('Logout failed. Please try again.')
-    }
-  }
-
-  async function healthCheck() {
-    const r = await fetch('/api/health')
-    const j = await r.json()
-    setStatus(`Health: ${j.status} (uptime ${j.uptimeSeconds}s)`)
-  }
+  const navigate = useNavigate()
+  const [statusMessage, setStatusMessage] = useState('Checking your session...')
+  const [isChecking, setIsChecking] = useState(true)
+  const [loginPending, setLoginPending] = useState(false)
 
   useEffect(() => {
-    void loadSession()
-  }, [])
+    let active = true
 
-  const helper = isLoggedIn ? (
-    <>Connected to <strong>{accountName ?? 'Spotify'}</strong>.</>
-  ) : (
-    <>After approving in Spotify, you will be sent back to <code>/auth/callback</code>.</>
-  )
+    const checkSession = async () => {
+      try {
+        const session = await fetchSession()
+        if (!active) return
+        if (session.loggedIn) {
+          navigate('/dashboard', { replace: true })
+          return
+        }
+        if (session.expired) {
+          setStatusMessage('Your Spotify session expired. Log back in to refresh it.')
+        } else if (session.missingScope) {
+          setStatusMessage('We need additional permissions. Log in again to continue.')
+        } else {
+          setStatusMessage('Connect your Spotify account to explore your stats.')
+        }
+      } catch (err) {
+        if (!active) return
+        console.error('Failed to load session', err)
+        setStatusMessage('Could not verify session. Try logging in again.')
+      } finally {
+        if (active) {
+          setIsChecking(false)
+        }
+      }
+    }
 
-  const displayStatus = status || (isLoggedIn ? 'Connected and ready.' : 'Ready when you are.')
+    void checkSession()
+
+    return () => {
+      active = false
+    }
+  }, [navigate])
+
+  const handleLogin = async () => {
+    try {
+      setLoginPending(true)
+      setStatusMessage('Redirecting you to Spotify...')
+      const url = await requestLoginUrl()
+      window.location.href = url
+    } catch (err) {
+      console.error('Failed to start login', err)
+      setStatusMessage('Something went wrong starting the login. Please try again.')
+    } finally {
+      setLoginPending(false)
+    }
+  }
+
+  const loginDisabled = loginPending || isChecking
 
   return (
-    <div className="page-shell">
-      <header className="page-header">
-        <h1 className="page-heading">Spotify Stats MVP</h1>
-        <p className="page-subtitle">Authenticate with Spotify and keep an eye on your service health.</p>
-      </header>
+    <div className="landing-page">
+      <nav className="landing-nav">
+        <div className="brand-mark">
+          <span className="brand-icon" aria-hidden="true">SS</span>
+          <span className="brand-name">Spotify Stats</span>
+        </div>
+        <button className="nav-login" onClick={handleLogin} disabled={loginDisabled}>
+          {loginPending ? 'Opening Spotify…' : 'Log in with Spotify'}
+        </button>
+      </nav>
 
-      <p className="status-line">
-        <strong>Status:</strong> {displayStatus}
-      </p>
+      <main className="landing-main">
+        <section className="landing-hero">
+          <h1>Your listening history, organized.</h1>
+          <p className="hero-lede">
+            Track the artists and songs you repeat most over the past 4 weeks, 6 months, or the last year.
+            Sign in with Spotify and we&apos;ll build your personalized dashboard.
+          </p>
+          <div className="landing-actions">
+            <button onClick={handleLogin} disabled={loginDisabled}>
+              {loginPending ? 'Opening Spotify…' : 'Get started'}
+            </button>
+            <p className="landing-status">{statusMessage}</p>
+          </div>
+          <ul className="landing-feature-list">
+            <li>See top artists and tracks across multiple time ranges.</li>
+            <li>Spot trends in what you&apos;ve been looping lately.</li>
+            <li>Prepare to share your highlights with friends (coming soon).</li>
+          </ul>
+        </section>
 
-      <div className="button-row">
-        {isLoggedIn === true ? (
-          <button onClick={logoutSpotify}>Logout</button>
-        ) : (
-          <button onClick={connectSpotify}>Login to Spotify</button>
-        )}
-        <button className="secondary" onClick={healthCheck}>Health Check</button>
-      </div>
+        <aside className="landing-preview" aria-hidden="true">
+          <div className="preview-card">
+            <h2>Top Artists</h2>
+            <div className="preview-pills">
+              <span className="preview-pill">short term</span>
+              <span className="preview-pill">medium term</span>
+              <span className="preview-pill">long term</span>
+            </div>
+            <ul className="preview-list">
+              <li>
+                <span className="preview-rank">1</span>
+                <span className="preview-text">Artist placeholder</span>
+              </li>
+              <li>
+                <span className="preview-rank">2</span>
+                <span className="preview-text">Artist placeholder</span>
+              </li>
+              <li>
+                <span className="preview-rank">3</span>
+                <span className="preview-text">Artist placeholder</span>
+              </li>
+            </ul>
+          </div>
+          <div className="preview-card">
+            <h2>Top Tracks</h2>
+            <ul className="preview-list">
+              <li>
+                <span className="preview-rank">1</span>
+                <span className="preview-text">Track placeholder</span>
+              </li>
+              <li>
+                <span className="preview-rank">2</span>
+                <span className="preview-text">Track placeholder</span>
+              </li>
+              <li>
+                <span className="preview-rank">3</span>
+                <span className="preview-text">Track placeholder</span>
+              </li>
+            </ul>
+          </div>
+        </aside>
+      </main>
 
-      <p className="helper-text">{helper}</p>
+      <footer className="landing-footer">
+        <span>Built with the Spotify Web API. No surprises—just your listening habits.</span>
+      </footer>
     </div>
   )
 }
