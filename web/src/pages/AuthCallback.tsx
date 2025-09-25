@@ -1,86 +1,106 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import '../styles/theme.css'
+import { fetchSession } from '../lib/api'
 
-type SessionResponse = {
-  loggedIn?: boolean
-  account?: string | null
-}
+type CallbackState = 'working' | 'success' | 'error'
 
 export default function AuthCallback() {
+  const navigate = useNavigate()
   const [params] = useSearchParams()
-  const [msg, setMsg] = useState('Finishing login...')
   const code = params.get('code')
   const error = params.get('error')
+  const [state, setState] = useState<CallbackState>('working')
+  const [message, setMessage] = useState('Finishing your Spotify login...')
   const lastHandledCode = useRef<string | null>(null)
   const lastHandledError = useRef<string | null>(null)
 
   useEffect(() => {
-    async function finish() {
+    async function finishLogin() {
       if (error) {
         if (lastHandledError.current === error) return
         lastHandledError.current = error
-        setMsg(`Spotify error: ${error}`)
+        setState('error')
+        setMessage(`Spotify returned an error: ${error}`)
         return
       }
+
       if (!code) {
         if (lastHandledCode.current === null) {
-          setMsg('No code found in URL.')
+          setState('error')
+          setMessage('No authorization code found in the URL.')
         }
         return
       }
+
       if (lastHandledCode.current === code) {
         return
       }
+
       lastHandledCode.current = code
+
       try {
         const res = await fetch('/api/auth/callback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include', // keep cookies
-          body: JSON.stringify({ code })
+          credentials: 'include',
+          body: JSON.stringify({ code }),
         })
+
         if (!res.ok) {
-          const j = await res.json().catch(() => ({}))
-          if (j.error === 'token_exchange_failed' || j.error === 'missing_code_or_verifier') {
-            const sessionRes = await fetch('/api/auth/session', { credentials: 'include' })
-            if (sessionRes.ok) {
-              const session = (await sessionRes.json()) as SessionResponse
-              if (session?.loggedIn) {
-                setMsg('Connected! You can go back home and call protected endpoints.')
+          const payload = await res.json().catch(() => ({}))
+          if (payload.error === 'token_exchange_failed' || payload.error === 'missing_code_or_verifier') {
+            try {
+              const session = await fetchSession()
+              if (session.loggedIn) {
+                setState('success')
+                setMessage('You are already connected. Redirecting to your dashboard...')
+                navigate('/dashboard', { replace: true })
                 return
               }
+            } catch (sessionErr) {
+              console.error('Session lookup after failure failed', sessionErr)
             }
           }
-          setMsg(`Login failed: ${j.error ?? res.statusText}`)
+          setState('error')
+          setMessage(`Login failed: ${payload.error ?? res.statusText}`)
           return
         }
-        setMsg('Connected! You can go back home and call protected endpoints.')
-      } catch (e: any) {
-        setMsg(`Network error: ${e?.message ?? e}`)
+
+        setState('success')
+        setMessage('Connected! Redirecting to your dashboard...')
+        navigate('/dashboard', { replace: true })
+      } catch (err: any) {
+        console.error('Callback network error', err)
+        setState('error')
+        setMessage(`Network error: ${err?.message ?? err}`)
         lastHandledCode.current = null
       }
     }
-    finish()
-  }, [code, error])
 
-  const helperText = msg.startsWith('Connected')
-    ? 'You can close this tab or explore the app.'
-    : 'If this keeps happening, try starting the login again from the homepage.'
+    void finishLogin()
+  }, [code, error, navigate])
+
+  const helperText =
+    state === 'success'
+      ? 'Hang tight, we are sending you to your dashboard.'
+      : 'If this keeps happening, try starting the login from the landing page again.'
 
   return (
     <div className="page-shell">
       <header className="page-header">
         <h1 className="page-heading">Spotify Auth Callback</h1>
-        <p className="page-subtitle">We are talking to Spotify to finish your login.</p>
+        <p className="page-subtitle">Completing the connection to your Spotify account.</p>
       </header>
 
       <p className="status-line">
-        <strong>Status:</strong> {msg}
+        <strong>Status:</strong> {message}
       </p>
 
       <div className="button-row">
-        <Link className="button-link" to="/">Return Home</Link>
+        <Link className="button-link" to="/">
+          Return Home
+        </Link>
       </div>
 
       <p className="helper-text">{helperText}</p>
