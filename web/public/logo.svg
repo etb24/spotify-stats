@@ -1,0 +1,9 @@
+<svg width="164" height="164" viewBox="0 0 164 164" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Chunky Offset Bars">
+  <!-- darker background -->
+  <rect width="164" height="164" rx="28" fill="#141414"></rect>
+  <!-- bars: width 16, gap 8, centered; tops: 90, 66, 40, 54; bottoms all 124 -->
+  <rect x="36" y="90" width="16" height="34" rx="8" fill="#1DB954"></rect>
+  <rect x="60" y="66" width="16" height="58" rx="8" fill="#1DB954" opacity="0.92"></rect>
+  <rect x="84" y="40" width="16" height="84" rx="8" fill="#1DB954" opacity="0.88"></rect>
+  <rect x="108" y="54" width="16" height="70" rx="8" fill="#1DB954" opacity="0.84"></rect>
+</svg>

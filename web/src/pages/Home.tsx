@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/theme.css'
 import '../styles/landing.css'
+import logo from '../assets/logo.svg'
 import { fetchSession, requestLoginUrl } from '../lib/api'
 
 export default function Home() {
@@ -62,11 +63,25 @@ export default function Home() {
 
   const loginDisabled = loginPending || isChecking
 
+  const placeholderImage = 'https://via.placeholder.com/96/1db954/ffffff?text=%F0%9F%8E%B6'
+
+  const previewArtists = [
+    { name: 'Artist Name', sub: 'Genres will appear here' },
+    { name: 'Artist Name', sub: 'Genres will appear here' },
+    { name: 'Artist Name', sub: 'Genres will appear here' },
+  ]
+
+  const previewTracks = [
+    { title: 'Track Name', sub: 'Artist • Album will display here' },
+    { title: 'Track Name', sub: 'Artist • Album will display here' },
+    { title: 'Track Name', sub: 'Artist • Album will display here' },
+  ]
+
   return (
     <div className="landing-page">
       <nav className="landing-nav">
         <div className="brand-mark">
-          <span className="brand-icon" aria-hidden="true">SS</span>
+          <img className="brand-logo" src={logo} alt="Spotify Stats logo" />
           <span className="brand-name">Spotify Stats</span>
         </div>
         <button className="nav-login" onClick={handleLogin} disabled={loginDisabled}>
@@ -98,40 +113,40 @@ export default function Home() {
           <div className="preview-card">
             <h2>Top Artists</h2>
             <div className="preview-pills">
-              <span className="preview-pill">short term</span>
-              <span className="preview-pill">medium term</span>
-              <span className="preview-pill">long term</span>
+              <span className="preview-pill">last 4 weeks </span>
+              <span className="preview-pill">last 6 months</span>
+              <span className="preview-pill">last 12 months</span>
             </div>
             <ul className="preview-list">
-              <li>
-                <span className="preview-rank">1</span>
-                <span className="preview-text">Artist placeholder</span>
-              </li>
-              <li>
-                <span className="preview-rank">2</span>
-                <span className="preview-text">Artist placeholder</span>
-              </li>
-              <li>
-                <span className="preview-rank">3</span>
-                <span className="preview-text">Artist placeholder</span>
-              </li>
+              {previewArtists.map(({ name, sub }, index) => (
+                <li key={`${name}-${index}`}>
+                  <span className="preview-rank">{index + 1}</span>
+                  <div className="preview-art" aria-hidden="true">
+                    <img src={placeholderImage} alt="" />
+                  </div>
+                  <div className="preview-meta">
+                    <span className="preview-text">{name}</span>
+                    <span className="preview-sub">{sub}</span>
+                  </div>
+                </li>
+              ))}
             </ul>
           </div>
           <div className="preview-card">
             <h2>Top Tracks</h2>
             <ul className="preview-list">
-              <li>
-                <span className="preview-rank">1</span>
-                <span className="preview-text">Track placeholder</span>
-              </li>
-              <li>
-                <span className="preview-rank">2</span>
-                <span className="preview-text">Track placeholder</span>
-              </li>
-              <li>
-                <span className="preview-rank">3</span>
-                <span className="preview-text">Track placeholder</span>
-              </li>
+              {previewTracks.map(({ title, sub }, index) => (
+                <li key={`${title}-${index}`}>
+                  <span className="preview-rank">{index + 1}</span>
+                  <div className="preview-art" aria-hidden="true">
+                    <img src={placeholderImage} alt="" />
+                  </div>
+                  <div className="preview-meta">
+                    <span className="preview-text">{title}</span>
+                    <span className="preview-sub">{sub}</span>
+                  </div>
+                </li>
+              ))}
             </ul>
           </div>
         </aside>
