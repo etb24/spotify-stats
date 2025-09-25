@@ -70,10 +70,11 @@ export default function AuthCallback() {
         setState('success')
         setMessage('Connected! Redirecting to your dashboard...')
         navigate('/dashboard', { replace: true })
-      } catch (err: any) {
+      } catch (err) {
         console.error('Callback network error', err)
+        const message = err instanceof Error ? err.message : String(err)
         setState('error')
-        setMessage(`Network error: ${err?.message ?? err}`)
+        setMessage(`Network error: ${message}`)
         lastHandledCode.current = null
       }
     }
