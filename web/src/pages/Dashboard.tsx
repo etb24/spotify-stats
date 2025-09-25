@@ -1,10 +1,38 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import '../styles/theme.css'
 import '../styles/dashboard.css'
-import { fetchSession, performLogout, type SessionResponse } from '../lib/api'
+import {
+  fetchSession,
+  performLogout,
+  fetchTopArtists,
+  fetchTopTracks,
+  type SessionResponse,
+  type TimeRange,
+  type SpotifyArtistItem,
+  type SpotifyTrackItem,
+} from '../lib/api'
 
-type TimeRange = 'short_term' | 'medium_term' | 'long_term'
+type ArtistRow = {
+  id: string
+  name: string
+  image: string | null
+  genres: string[]
+}
+
+type TrackRow = {
+  id: string
+  name: string
+  image: string | null
+  artists: string[]
+  album: string | null
+}
+
+type DataState<T> = {
+  items: T[]
+  loading: boolean
+  error: string | null
+}
 
 const TIME_RANGE_LABELS: Record<TimeRange, string> = {
   short_term: 'Last 4 Weeks',
@@ -12,12 +40,20 @@ const TIME_RANGE_LABELS: Record<TimeRange, string> = {
   long_term: 'Last 12 Months',
 }
 
+const createInitialState = <T,>(): DataState<T> => ({
+  items: [],
+  loading: true,
+  error: null,
+})
+
 export default function Dashboard() {
   const navigate = useNavigate()
   const [session, setSession] = useState<SessionResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [sessionLoading, setSessionLoading] = useState(true)
   const [selectedRange, setSelectedRange] = useState<TimeRange>('short_term')
-  const [error, setError] = useState<string | null>(null)
+  const [artistsState, setArtistsState] = useState<DataState<ArtistRow>>(() => createInitialState<ArtistRow>())
+  const [tracksState, setTracksState] = useState<DataState<TrackRow>>(() => createInitialState<TrackRow>())
+  const [sessionError, setSessionError] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -34,10 +70,10 @@ export default function Dashboard() {
       } catch (err) {
         if (!active) return
         console.error('Dashboard session check failed', err)
-        setError('We could not confirm your session. Please try logging in again.')
+        setSessionError('We could not confirm your session. Please try logging in again.')
       } finally {
         if (active) {
-          setLoading(false)
+          setSessionLoading(false)
         }
       }
     }
@@ -48,6 +84,63 @@ export default function Dashboard() {
       active = false
     }
   }, [navigate])
+
+  useEffect(() => {
+    if (!session?.loggedIn) {
+      return
+    }
+
+    let active = true
+
+    const toArtistRow = (artist: SpotifyArtistItem, index: number): ArtistRow => {
+      const image = artist.images?.find((img) => img?.url)?.url ?? null
+      return {
+        id: artist.id ?? `artist-${index}`,
+        name: artist.name ?? 'Unknown artist',
+        image,
+        genres: artist.genres?.slice(0, 3) ?? [],
+      }
+    }
+
+    const toTrackRow = (track: SpotifyTrackItem, index: number): TrackRow => {
+      const image = track.album?.images?.find((img) => img?.url)?.url ?? null
+      const artists = (track.artists ?? []).map((a) => a?.name).filter(Boolean) as string[]
+      return {
+        id: track.id ?? `track-${index}`,
+        name: track.name ?? 'Unknown track',
+        image,
+        artists,
+        album: track.album?.name ?? null,
+      }
+    }
+
+    const loadTopData = async () => {
+      setArtistsState({ items: [], loading: true, error: null })
+      setTracksState({ items: [], loading: true, error: null })
+
+      try {
+        const [artistsRes, tracksRes] = await Promise.all([
+          fetchTopArtists(selectedRange, { limit: 5 }),
+          fetchTopTracks(selectedRange, { limit: 5 }),
+        ])
+        if (!active) return
+        setArtistsState({ items: artistsRes.items.map(toArtistRow), loading: false, error: null })
+        setTracksState({ items: tracksRes.items.map(toTrackRow), loading: false, error: null })
+      } catch (err) {
+        if (!active) return
+        const message = err instanceof Error ? err.message : 'Failed to load data.'
+        console.error('Failed to load top data', err)
+        setArtistsState({ items: [], loading: false, error: message })
+        setTracksState({ items: [], loading: false, error: message })
+      }
+    }
+
+    void loadTopData()
+
+    return () => {
+      active = false
+    }
+  }, [session?.loggedIn, selectedRange])
 
   const handleLogout = async () => {
     try {
@@ -64,6 +157,8 @@ export default function Dashboard() {
   }
 
   const accountLabel = session?.account || 'Spotify listener'
+
+  const rangeOptions = useMemo(() => Object.keys(TIME_RANGE_LABELS) as TimeRange[], [])
 
   return (
     <div className="dashboard-shell">
@@ -83,7 +178,7 @@ export default function Dashboard() {
       <section className="dashboard-controls">
         <h2>Time range</h2>
         <div className="range-buttons">
-          {(Object.keys(TIME_RANGE_LABELS) as TimeRange[]).map((range) => (
+          {rangeOptions.map((range) => (
             <button
               key={range}
               type="button"
@@ -100,25 +195,76 @@ export default function Dashboard() {
         <section className="stats-card">
           <header>
             <h2>Top Artists</h2>
-            <span className="card-caption">Data for {TIME_RANGE_LABELS[selectedRange]} will appear here.</span>
+            <span className="card-caption">{TIME_RANGE_LABELS[selectedRange]}</span>
           </header>
-          <div className="empty-state">
-            {loading ? 'Loading your artists...' : 'We will list your go-to artists once the data pipeline is wired.'}
-          </div>
+          {artistsState.loading || sessionLoading ? (
+            <div className="empty-state">Loading your artists...</div>
+          ) : artistsState.error ? (
+            <div className="empty-state">{artistsState.error}</div>
+          ) : artistsState.items.length > 0 ? (
+            <ul className="top-list">
+              {artistsState.items.map((artist, index) => (
+                <li className="top-item" key={artist.id}>
+                  <span className="top-item-rank">{index + 1}</span>
+                  <div className={artist.image ? 'top-item-avatar' : 'top-item-avatar fallback'}>
+                    {artist.image ? (
+                      <img src={artist.image} alt={artist.name} />
+                    ) : (
+                      <span aria-hidden="true">{artist.name.charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div className="top-item-meta">
+                    <p className="top-item-name">{artist.name}</p>
+                    {artist.genres.length > 0 ? (
+                      <p className="top-item-sub">{artist.genres.join(', ')}</p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="empty-state">We do not have artist data for this range yet.</div>
+          )}
         </section>
 
         <section className="stats-card">
           <header>
             <h2>Top Tracks</h2>
-            <span className="card-caption">Data for {TIME_RANGE_LABELS[selectedRange]} will appear here.</span>
+            <span className="card-caption">{TIME_RANGE_LABELS[selectedRange]}</span>
           </header>
-          <div className="empty-state">
-            {loading ? 'Loading your tracks...' : 'Hook up the Spotify endpoints to see your most-played songs.'}
-          </div>
+          {tracksState.loading || sessionLoading ? (
+            <div className="empty-state">Loading your tracks...</div>
+          ) : tracksState.error ? (
+            <div className="empty-state">{tracksState.error}</div>
+          ) : tracksState.items.length > 0 ? (
+            <ul className="top-list">
+              {tracksState.items.map((track, index) => (
+                <li className="top-item" key={track.id}>
+                  <span className="top-item-rank">{index + 1}</span>
+                  <div className={track.image ? 'top-item-avatar' : 'top-item-avatar fallback'}>
+                    {track.image ? (
+                      <img src={track.image} alt={track.name} />
+                    ) : (
+                      <span aria-hidden="true">{track.name.charAt(0).toUpperCase()}</span>
+                    )}
+                  </div>
+                  <div className="top-item-meta">
+                    <p className="top-item-name">{track.name}</p>
+                    <p className="top-item-sub">
+                      {track.artists.join(', ')}
+                      {track.album ? ` • ${track.album}` : ''}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="empty-state">We do not have track data for this range yet.</div>
+          )}
         </section>
       </div>
 
-      {error ? <p className="dashboard-error">{error}</p> : null}
+      {sessionError ? <p className="dashboard-error">{sessionError}</p> : null}
     </div>
   )
 }

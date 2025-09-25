@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import authRoutes from './auth/routes/index';
+import topArtistsRoute from './routes/top-artists';
+import topTracksRoute from './routes/top-tracks';
 
 dotenv.config();
 
@@ -34,6 +36,8 @@ app.get('/api/health', (_req: Request, res: Response) => {
 app.use(cookieParser(process.env.API_SESSION_SECRET)); // needed for verifier cookie
 
 app.use('/api/auth', authRoutes);
+app.use('/api/top/artists', topArtistsRoute);
+app.use('/api/top/tracks', topTracksRoute);
 
 app.listen(port, () => {
   console.log(`Server is running on port http://127.0.0.1:${port}`);
