@@ -1,8 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { generateCodeVerifier, codeChallengeFromVerifier } from '../pkce';
+import { REQUIRED_SCOPES } from '../spotifyTokens';
 
 const SPOTIFY_AUTHORIZE = 'https://accounts.spotify.com/authorize';
-const SCOPES = ['user-top-read', 'user-read-recently-played'].join(' ');
+const OPTIONAL_SCOPES = ['user-read-recently-played'];
+const SCOPES = [...new Set([...REQUIRED_SCOPES, ...OPTIONAL_SCOPES])].join(' ');
 
 const router = Router();
 
